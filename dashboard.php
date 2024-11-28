@@ -77,8 +77,10 @@ $calendar = $stmt->get_result();
         <h2>OBS-Integration</h2>
         <p>
             Dein individueller OBS-Link: 
+            <p>Kalender</p>
             <code>https://adventskalender.bestefreundecommunity.de/calendar.php?user_id=<?php echo $_SESSION['user_id']; ?></code>
-            <!-- <code>https://adventskalender.bestefreundecommunity.de/giveaway_visual.html?user_id=<?php echo $_SESSION['user_id']; ?></code> -->
+            <p>Lostrommel</p>
+            <code>https://adventskalender.bestefreundecommunity.de/giveaway_visual.html?user_id=<?php echo $_SESSION['user_id']; ?></code>
         </p>
         <p>Kopiere diesen Link und füge ihn in OBS als Browser-Quelle ein.</p>
 

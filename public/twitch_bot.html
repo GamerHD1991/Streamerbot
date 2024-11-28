@@ -109,6 +109,7 @@
 
         async function checkFollowerStatus(username, channelName, oauthToken, clientId) {
             try {
+                // Benutzer-ID abrufen
                 const userResponse = await fetch(`https://api.twitch.tv/helix/users?login=${username}`, {
                     headers: {
                         'Authorization': `Bearer ${oauthToken}`,
@@ -129,6 +130,7 @@
                     return false;
                 }
 
+                // Follower-Status prüfen
                 const followResponse = await fetch(`https://api.twitch.tv/helix/users/follows?from_id=${userId}&to_id=${channelName}`, {
                     headers: {
                         'Authorization': `Bearer ${oauthToken}`,
@@ -304,6 +306,17 @@
                         if (participants.includes(username)) {
                             ws.send(`PRIVMSG #${botSettings.channel_name} :@${username}, du bist bereits im Giveaway für Tür ${activeGiveaway}!`);
                         } else {
+                            const followerHoursRequired = doors[activeGiveaway]?.min_follower_hours || 0;
+
+                            // Follower-Check, falls Mindest-Followerzeit definiert ist
+                            if (followerHoursRequired > 0) {
+                                const isFollower = await checkFollowerStatus(username, botSettings.channel_name, botSettings.oauth_token, botSettings.client_id);
+                                if (!isFollower) {
+                                    ws.send(`PRIVMSG #${botSettings.channel_name} :@${username}, du musst mindestens ${followerHoursRequired} Stunden ein Follower sein, um teilzunehmen.`);
+                                    return;
+                                }
+                            }
+
                             participants.push(username);
 
                             console.log("Sende Teilnehmerdaten an die API:", {

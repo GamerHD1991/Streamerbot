@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Test</title>
+</head>
+<body>
+    <h1>Test für save_participants.php</h1>
+    <form action="https://adventskalender.bestefreundecommunity.de/api/save_participants.php" method="POST">
+        <label for="user_id">User ID:</label>
+        <input type="number" id="user_id" name="user_id" value="1" required><br><br>
+        
+        <label for="door_number">Tür Nummer:</label>
+        <input type="number" id="door_number" name="door_number" value="1" required><br><br>
+        
+        <label for="participant_name">Teilnehmer Name:</label>
+        <input type="text" id="participant_name" name="participant_name" value="TestBenutzer" required><br><br>
+        
+        <button type="submit">Senden</button>
+    </form>
+</body>
+</html>

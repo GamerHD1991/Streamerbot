@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Giveaway Lostrommel</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #2c2c2c;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            text-align: center;
+        }
+
+        .trommel-container {
+            width: 300px;
+            height: 300px;
+            border: 5px solid #fff;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            overflow: hidden;
+            background: linear-gradient(145deg, #444, #333);
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.5);
+        }
+
+        .participant {
+            position: absolute;
+            font-size: 1.2rem;
+            font-weight: bold;
+            animation: rotate 10s linear infinite;
+            color: #22FDFE;
+        }
+
+        .winner {
+            color: gold;
+            font-size: 1.5rem;
+            font-weight: bold;
+            animation: bounce 2s infinite;
+        }
+
+        @keyframes rotate {
+            from {
+                transform: rotate(0deg) translateX(120px) rotate(0deg);
+            }
+            to {
+                transform: rotate(360deg) translateX(120px) rotate(-360deg);
+            }
+        }
+
+        @keyframes bounce {
+            0%, 100% {
+                transform: translateY(0);
+            }
+            50% {
+                transform: translateY(-10px);
+            }
+        }
+
+        #status {
+            font-size: 1.2rem;
+            color: #FDC57B;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎉 Giveaway Lostrommel</h1>
+    <div class="trommel-container" id="trommel">
+        <!-- Teilnehmer-Namen werden hier dynamisch eingefügt -->
+    </div>
+    <p id="status">Warte auf Teilnehmer...</p>
+    <script>
+        const userId = new URLSearchParams(window.location.search).get("user_id");
+        if (!userId) {
+            alert("Fehler: Benutzer-ID fehlt.");
+            throw new Error("Benutzer-ID fehlt.");
+        }
+
+        const trommel = document.getElementById("trommel");
+        const status = document.getElementById("status");
+        let participants = [];
+
+        async function fetchParticipants() {
+            try {
+                const doorNumber = 1; // Beispiel: Nummer der Tür
+                const response = await fetch(`/api/save_participants.php?user_id=${userId}&door_number=${doorNumber}`);
+                const data = await response.json();
+
+                if (data.success) {
+                    updateTrommel(data.participants || []);
+                } else {
+                    status.textContent = "Fehler beim Abrufen der Teilnehmer.";
+                    console.error(data.message);
+                }
+            } catch (error) {
+                status.textContent = "Fehler beim Abrufen der Teilnehmer.";
+                console.error(error);
+            }
+        }
+
+        function updateTrommel(newParticipants) {
+            const newNames = newParticipants.filter(name => !participants.includes(name));
+            if (newNames.length > 0) {
+                status.textContent = `${newNames.length} neue Teilnehmer!`;
+            } else if (newParticipants.length === 0) {
+                status.textContent = "Noch keine Teilnehmer.";
+            }
+
+            participants = newParticipants;
+            renderTrommel();
+        }
+
+        function renderTrommel() {
+            trommel.innerHTML = "";
+            const angleStep = 360 / participants.length;
+
+            participants.forEach((name, index) => {
+                const div = document.createElement("div");
+                div.className = "participant";
+                div.style.transform = `rotate(${index * angleStep}deg) translateX(120px) rotate(-${index * angleStep}deg)`;
+                div.textContent = name;
+                trommel.appendChild(div);
+            });
+        }
+
+        // Teilnehmer alle 5 Sekunden aktualisieren
+        setInterval(fetchParticipants, 5000);
+
+        // Initial laden
+        fetchParticipants();
+    </script>
+</body>
+</html>

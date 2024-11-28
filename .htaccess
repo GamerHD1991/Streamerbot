@@ -1,0 +1,39 @@
+# Aktiviert PHP-Sessions automatisch
+php_value session.auto_start 1
+
+# Setzt das Session-Speicherverzeichnis
+php_value session.save_path "/tmp"
+
+# Erlaubt die Verwendung von Cookies für Sessions
+php_value session.use_cookies 1
+php_value session.use_only_cookies 1
+php_value session.cookie_httponly 1
+
+# Aktiviert die Anzeige von Fehlermeldungen (nur für Debugging, in Produktion deaktivieren)
+php_flag display_errors On
+php_value error_reporting -1
+
+# Verhindert den Zugriff auf sensible Dateien wie .env
+<Files .env>
+    Order allow,deny
+    Deny from all
+</Files>
+
+# Standardmäßig index.php als Startseite
+DirectoryIndex index.php
+
+RewriteEngine On
+
+# Regel: Benutzer ist nicht eingeloggt, leite zur Login-Seite um
+RewriteCond %{REQUEST_URI} !^/auth/login.php$
+RewriteCond %{REQUEST_URI} !^/assets/
+RewriteCond %{REQUEST_URI} !^/api/
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{HTTP_COOKIE} !PHPSESSID=.*$
+RewriteRule ^(.*)$ /auth/login.php [L]
+
+# Regel: Benutzer ist eingeloggt, zeige das Dashboard
+RewriteCond %{REQUEST_URI} ^/$
+RewriteCond %{HTTP_COOKIE} PHPSESSID=.*$
+RewriteRule ^$ /dashboard.php [L]

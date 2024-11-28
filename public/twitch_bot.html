@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Twitch Adventskalender Bot</title>
+    <link rel="stylesheet" href="assets/css/twitch_bot.css">
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #333;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            text-align: center;
+        }
+
+        .container {
+            width: 90%;
+            max-width: 800px;
+            background-color: #444;
+            border-radius: 10px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+            padding: 20px;
+        }
+
+        h1 {
+            font-size: 2rem;
+            color: #22FDFE;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7);
+        }
+
+        #status {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #04C2F6;
+            margin-top: 20px;
+        }
+
+        .status-error {
+            color: #FF4C4C;
+        }
+
+        .status-success {
+            color: #22FDFE;
+        }
+
+        .status-info {
+            color: #FDC57B;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎄 Adventskalender Twitch Bot</h1>
+        <p id="status" class="status-info">Verbindung wird hergestellt...</p>
+    </div>
+
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const userId = new URLSearchParams(window.location.search).get("user_id");
+
+        console.log("Benutzer-ID aus URL:", userId);
+        if (!userId) {
+            document.getElementById('status').textContent = "❌ Benutzer-ID fehlt.";
+            throw new Error("Benutzer-ID fehlt.");
+        }
+
+        let activeGiveaway = null;
+        let participants = [];
+        let doors = {};
+
+        async function fetchBotSettings() {
+            const response = await fetch(`/api/get_bot_settings.php?user_id=${userId}`);
+            if (!response.ok) {
+                console.error("Fehler beim Laden der Bot-Einstellungen:", response.statusText);
+                throw new Error("Fehler beim Laden der Bot-Einstellungen.");
+            }
+
+            const data = await response.json();
+            if (!data.success) {
+                console.error("Fehler in Bot-Einstellungen:", data.message);
+                throw new Error(data.message);
+            }
+
+            console.log("Bot-Einstellungen geladen:", data);
+
+            // Türen konfigurieren
+            doors = data.doors.reduce((acc, door) => {
+                acc[door.door_number] = door;
+                return acc;
+            }, {});
+
+            // Benutzer-ID explizit in botSettings integrieren
+            botSettings = {
+                ...data,
+                user_id: userId // Benutzer-ID aus der URL hinzufügen
+            };
+
+            console.log("Vollständige Bot-Einstellungen:", botSettings);
+
+            return botSettings;
+        }
+
+        async function checkFollowerStatus(username, channelName, oauthToken, clientId) {
+            try {
+                const userResponse = await fetch(`https://api.twitch.tv/helix/users?login=${username}`, {
+                    headers: {
+                        'Authorization': `Bearer ${oauthToken}`,
+                        'Client-Id': clientId
+                    }
+                });
+
+                if (!userResponse.ok) {
+                    console.error("Fehler beim Abrufen der Benutzer-ID:", await userResponse.text());
+                    return false;
+                }
+
+                const userData = await userResponse.json();
+                const userId = userData.data[0]?.id;
+
+                if (!userId) {
+                    console.error("Benutzer-ID konnte nicht ermittelt werden.");
+                    return false;
+                }
+
+                const followResponse = await fetch(`https://api.twitch.tv/helix/users/follows?from_id=${userId}&to_id=${channelName}`, {
+                    headers: {
+                        'Authorization': `Bearer ${oauthToken}`,
+                        'Client-Id': clientId
+                    }
+                });
+
+                if (!followResponse.ok) {
+                    console.error("Fehler beim Abrufen des Follower-Status:", await followResponse.text());
+                    return false;
+                }
+
+                const followData = await followResponse.json();
+
+                if (followData.data.length === 0) {
+                    console.log("Benutzer ist kein Follower.");
+                    return false;
+                }
+
+                console.log("Benutzer ist ein Follower:", followData.data[0]);
+                return true;
+            } catch (error) {
+                console.error("Fehler bei checkFollowerStatus:", error);
+                return false;
+            }
+        }
+
+        async function connectToTwitchChat() {
+            const botSettings = await fetchBotSettings();
+
+            if (!botSettings.bot_username || !botSettings.oauth_token || !botSettings.channel_name) {
+                document.getElementById('status').textContent = "❌ Fehler: Ungültige Bot-Einstellungen.";
+                document.getElementById('status').classList.add("status-error");
+                throw new Error("Ungültige Bot-Einstellungen.");
+            }
+
+            const ws = new WebSocket("wss://irc-ws.chat.twitch.tv:443");
+
+            ws.onopen = () => {
+                document.getElementById('status').textContent = "🎉 Verbunden mit Twitch IRC - die Seite offen lassen!";
+                document.getElementById('status').classList.add("status-success");
+                ws.send(`PASS ${botSettings.oauth_token}`);
+                ws.send(`NICK ${botSettings.bot_username}`);
+                ws.send(`JOIN #${botSettings.channel_name}`);
+                ws.send(`PRIVMSG #${botSettings.channel_name} :🎄 Adventskalender Bot ist bereit!`);
+            };
+
+            ws.onmessage = async (event) => {
+                const message = event.data.trim();
+                console.log("Eingehende Nachricht:", message);
+
+                if (message.startsWith("PING")) {
+                    ws.send("PONG :tmi.twitch.tv");
+                } else if (message.includes(`PRIVMSG #${botSettings.channel_name}`)) {
+                    const chatMessage = message.split(" :")[1].trim();
+                    const username = message.split("!")[0].slice(1);
+                    const userId = message.match(/user-id=(\d+)/)?.[1];
+
+                    if (chatMessage.startsWith("!advent")) {
+                        const doorNumber = parseInt(chatMessage.split(" ")[1]);
+
+                        if (isNaN(doorNumber)) {
+                            ws.send(`PRIVMSG #${botSettings.channel_name} :❌ Bitte gib eine gültige Türnummer an!`);
+                            return;
+                        }
+
+                        if (!doors || !doors[doorNumber]) {
+                            ws.send(`PRIVMSG #${botSettings.channel_name} :❌ Tür ${doorNumber} existiert nicht.`);
+                            return;
+                        }
+
+                        if (doors[doorNumber].is_open) {
+                            ws.send(`PRIVMSG #${botSettings.channel_name} :❌ Tür ${doorNumber} ist bereits geöffnet.`);
+                            return;
+                        }
+
+                        if (activeGiveaway) {
+                            ws.send(`PRIVMSG #${botSettings.channel_name} :🚫 Es läuft bereits ein Giveaway für Tür ${activeGiveaway}.`);
+                            return;
+                        }
+
+                        const prize = doors[doorNumber].prize || "keinen Preis";
+                        activeGiveaway = doorNumber;
+                        participants = [];
+
+                        ws.send(`PRIVMSG #${botSettings.channel_name} :🎉 Giveaway für Tür ${doorNumber} gestartet! Gebe "!join" ein, um teilzunehmen.`);
+
+                        setTimeout(async () => {
+                            if (participants.length === 0) {
+                                ws.send(`PRIVMSG #${botSettings.channel_name} :❌ Keine Teilnehmer für Tür ${doorNumber}. Das Giveaway wurde abgebrochen.`);
+                                activeGiveaway = null;
+                                return;
+                            }
+
+                            let winnerResponded = false;
+                            let remainingParticipants = [...participants];
+
+                            while (remainingParticipants.length > 0 && !winnerResponded) {
+                                const winner = remainingParticipants[Math.floor(Math.random() * remainingParticipants.length)];
+                                ws.send(`PRIVMSG #${botSettings.channel_name} :🎉 Herzlichen Glückwunsch @${winner}, du hast Tür ${doorNumber} gewonnen! Gewinn: ${prize}`);
+                                ws.send(`PRIVMSG #${botSettings.channel_name} :@${winner}, melde dich im Chat! Nach 5 Minuten wird ein neuer Gewinner gezogen, falls du dich nicht meldest.`);
+
+                                const responseHandler = async (event) => {
+                                    const responseMessage = event.data.trim();
+                                    if (responseMessage.includes(`PRIVMSG #${botSettings.channel_name}`)) {
+                                        const respondingUser = responseMessage.split("!")[0].slice(1);
+
+                                        if (respondingUser === winner) {
+                                            winnerResponded = true;
+                                            ws.send(`PRIVMSG #${botSettings.channel_name} :🎉 @${winner}, danke für deine Rückmeldung! Tür ${doorNumber} wird jetzt als geöffnet markiert.`);
+                                            ws.removeEventListener("message", responseHandler);
+
+                                            // Tür als geöffnet markieren
+                                            await fetch('/api/open_door.php', {
+                                                method: 'POST',
+                                                headers: { 'Content-Type': 'application/json' },
+                                                body: JSON.stringify({ user_id: botSettings.user_id, door_number: doorNumber })
+                                            });
+
+                                            // Teilnehmer löschen
+                                            await fetch('/api/delete_participants.php', {
+                                                method: 'POST',
+                                                headers: { 'Content-Type': 'application/json' },
+                                                body: JSON.stringify({ user_id: botSettings.user_id, door_number: doorNumber })
+                                            });
+                                        }
+                                    }
+                                };
+
+                                ws.addEventListener("message", responseHandler);
+
+                                await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
+
+                                if (!winnerResponded) {
+                                    ws.removeEventListener("message", responseHandler);
+                                    remainingParticipants = remainingParticipants.filter((p) => p !== winner);
+                                    ws.send(`PRIVMSG #${botSettings.channel_name} :❌ @${winner} hat sich nicht gemeldet. Ziehe einen neuen Gewinner...`);
+                                }
+                            }
+
+                            if (!winnerResponded) {
+                                ws.send(`PRIVMSG #${botSettings.channel_name} :❌ Es konnte kein neuer Gewinner ermittelt werden.`);
+
+                                // Teilnehmer löschen
+                                await fetch('/api/delete_participants.php', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ user_id: botSettings.user_id, door_number: doorNumber })
+                                });
+                            }
+
+                            // Tür auf "offen" setzen
+                            await fetch('/api/open_door.php', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ user_id: botSettings.user_id, door_number: doorNumber })
+                            });
+
+                            activeGiveaway = null;
+                        }, doors[doorNumber].giveaway_duration * 1000);
+                    }
+
+                    if (chatMessage === "!join" && activeGiveaway) {
+                        const username = message.split("!")[0].slice(1);
+                        const userId = botSettings.user_id; // Benutzer-ID aus Bot-Einstellungen
+
+                        if (!userId) {
+                            ws.send(`PRIVMSG #${botSettings.channel_name} :@${username}, ein Fehler ist aufgetreten. Deine Teilnahme konnte nicht gespeichert werden.`);
+                            console.error("Fehler: Benutzer-ID fehlt:", botSettings);
+                            return;
+                        }
+
+                        if (participants.includes(username)) {
+                            ws.send(`PRIVMSG #${botSettings.channel_name} :@${username}, du bist bereits im Giveaway für Tür ${activeGiveaway}!`);
+                        } else {
+                            participants.push(username);
+
+                            console.log("Sende Teilnehmerdaten an die API:", {
+                                user_id: userId,
+                                door_number: activeGiveaway,
+                                participant_name: username
+                            });
+
+                            // Teilnehmer speichern
+                            fetch('/api/save_participants.php', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    user_id: userId,
+                                    door_number: activeGiveaway,
+                                    participant_name: username
+                                })
+                            })
+                            .then(async response => {
+                                const data = await response.json();
+                                console.log("Antwort von save_participants:", data);
+
+                                if (data.success) {
+                                    ws.send(`PRIVMSG #${botSettings.channel_name} :@${username}, du bist im Giveaway für Tür ${activeGiveaway}!`);
+                                } else {
+                                    ws.send(`PRIVMSG #${botSettings.channel_name} :❌ Fehler beim Hinzufügen des Teilnehmers: ${data.message}`);
+                                    console.error("Fehler beim Speichern des Teilnehmers:", data.message);
+                                }
+                            })
+                            .catch(error => {
+                                ws.send(`PRIVMSG #${botSettings.channel_name} :❌ Fehler bei der Verarbeitung.`);
+                                console.error("Fehler bei save_participants:", error);
+                            });
+                        }
+                    }
+                }
+            };
+
+            ws.onclose = () => {
+                document.getElementById('status').textContent = "🔒 Verbindung geschlossen.";
+                document.getElementById('status').classList.add("status-error");
+            };
+
+            ws.onerror = (error) => {
+                console.error("WebSocket-Fehler:", error);
+                document.getElementById('status').textContent = "❌ Fehler bei der Verbindung.";
+                document.getElementById('status').classList.add("status-error");
+            };
+        }
+
+        connectToTwitchChat().catch((error) => {
+            console.error("Fehler:", error);
+            document.getElementById('status').textContent = "❌ Fehler bei der Initialisierung.";
+            document.getElementById('status').classList.add("status-error");
+        });
+    </script>
+</body>
+</html>

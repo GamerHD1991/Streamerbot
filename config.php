@@ -42,6 +42,11 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
    
 }
 
+// Datenbank-Konfiguration
+define('DB_HOST', $_ENV['DB_HOST']);
+define('DB_USER', $_ENV['DB_USER']);
+define('DB_PASS', $_ENV['DB_PASS']);;
+define('DB_NAME', $_ENV['DB_NAME']);;
 
 // Twitch-Konstanten definieren
 define('TWITCH_CLIENT_ID', $_ENV['TWITCH_CLIENT_ID']);

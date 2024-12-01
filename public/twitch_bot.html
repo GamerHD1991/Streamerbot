@@ -477,68 +477,126 @@
                         const channelId = botSettings.channel_id;
                         const jwtToken = botSettings.streamelements_jwt;
 
-                        // Punktesystem-Name abrufen
-                        const currencyName = await fetchCurrencyName(channelId, jwtToken);
-                        console.log("Punktesystem-Name:", currencyName);
-
                         const doorPointsCost = doors[activeGiveaway]?.points_cost || 0;
-                        console.log(`Benötigte ${currencyName}:`, doorPointsCost);
+                        console.log(`Benötigte Punkte: ${doorPointsCost}`);
 
                         if (doorPointsCost > 0) {
                             try {
-                                const userPoints = await getPointsFromChat(username);
-                                console.log(`${username} hat ${userPoints} ${currencyName}.`);
+                                // Punktesystemnamen dynamisch abrufen
+                                const currencyName = await fetchCurrencyName(channelId, jwtToken);
+                                console.log(`Punktesystem-Name: ${currencyName}`);
 
-                                if (userPoints < doorPointsCost) {
-                                    ws.send(`PRIVMSG #${botSettings.channel_name} :@${username}, du hast nicht genug ${currencyName} (${doorPointsCost} benötigt).`);
-                                    return;
-                                }
+                                // Punkte abfragen mit dynamischem Punktesystemnamen
+                                ws.send(`PRIVMSG #${botSettings.channel_name} :!${currencyName} @${username}`);
+                                console.log(`Punkteabfrage für ${username} gesendet.`);
 
-                                const pointsDeducted = await deductPoints(channelId, jwtToken, username, doorPointsCost);
-                                if (!pointsDeducted) {
-                                    ws.send(`PRIVMSG #${botSettings.channel_name} :@${username}, ein Fehler ist aufgetreten. ${currencyName} konnten nicht abgezogen werden.`);
-                                    return;
-                                }
+                                let listenerResolved = false; // Überprüft, ob die Antwort erfolgreich empfangen wurde
+
+                                // Listener für die Antwort des Punkteregisters
+                                const listener = (event) => {
+                                    const message = event.data.trim();
+                                    console.log("Eingehende Nachricht:", message);
+
+                                    if (message.includes(`${username} hat`)) {
+                                        const regex = new RegExp(`hat (\\d+)\\s+${currencyName}`, "i");
+                                        const pointsMatch = message.match(regex);
+                                        if (pointsMatch) {
+                                            listenerResolved = true; // Listener erfolgreich aufgelöst
+                                            const userPoints = parseInt(pointsMatch[1], 10);
+                                            console.log(`${username} hat ${userPoints} ${currencyName}.`);
+
+                                            if (userPoints < doorPointsCost) {
+                                                ws.send(`PRIVMSG #${botSettings.channel_name} :@${username}, du hast nicht genug ${currencyName} (${doorPointsCost} benötigt).`);
+                                                ws.removeEventListener("message", listener); // Listener entfernen
+                                                return;
+                                            }
+
+                                            // Verbleibende Punkte berechnen
+                                            const remainingPoints = userPoints - doorPointsCost;
+
+                                            // Punkte setzen mit !setpoints
+                                            ws.send(`PRIVMSG #${botSettings.channel_name} :!setpoints ${username} ${remainingPoints}`);
+                                            console.log(`${username} hat jetzt ${remainingPoints} ${currencyName}.`);
+
+                                            ws.send(`PRIVMSG #${botSettings.channel_name} :@${username}, du bist im Giveaway für Tür ${activeGiveaway}!`);
+                                            participants.push(username);
+
+                                            // Teilnehmer speichern
+                                            fetch('/api/save_participants.php', {
+                                                method: 'POST',
+                                                headers: { 'Content-Type': 'application/json' },
+                                                body: JSON.stringify({
+                                                    user_id: userId,
+                                                    door_number: activeGiveaway,
+                                                    participant_name: username
+                                                })
+                                            })
+                                            .then(async (response) => {
+                                                const data = await response.json();
+                                                console.log("Antwort von save_participants:", data);
+
+                                                if (!data.success) {
+                                                    ws.send(`PRIVMSG #${botSettings.channel_name} :❌ Fehler beim Hinzufügen des Teilnehmers: ${data.message}`);
+                                                }
+                                            })
+                                            .catch((error) => {
+                                                console.error("Fehler bei save_participants:", error);
+                                                ws.send(`PRIVMSG #${botSettings.channel_name} :❌ Fehler bei der Verarbeitung.`);
+                                            });
+
+                                            ws.removeEventListener("message", listener); // Listener entfernen
+                                        }
+                                    }
+                                };
+
+                                // Listener hinzufügen
+                                ws.addEventListener("message", listener);
+
+                                // Timeout für die Punkteprüfung
+                                setTimeout(() => {
+                                    if (!listenerResolved) {
+                                        ws.removeEventListener("message", listener);
+                                        ws.send(`PRIVMSG #${botSettings.channel_name} :@${username}, keine Punkteantwort erhalten. Bitte versuche es später erneut.`);
+                                    }
+                                }, 10000); // Timeout von 10 Sekunden
                             } catch (error) {
                                 console.error("Fehler bei der Punkteprüfung:", error);
                                 ws.send(`PRIVMSG #${botSettings.channel_name} :@${username}, ein Fehler ist aufgetreten. Bitte versuche es später erneut.`);
-                                return;
                             }
-                        }
-
-                        // Benutzer zur Teilnehmerliste hinzufügen
-                        participants.push(username);
-                        console.log("Sende Teilnehmerdaten an die API:", {
-                            user_id: userId,
-                            door_number: activeGiveaway,
-                            participant_name: username
-                        });
-
-                        // Teilnehmer speichern
-                        fetch('/api/save_participants.php', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
+                        } else {
+                            // Kein Punkteabzug erforderlich
+                            participants.push(username);
+                            console.log("Sende Teilnehmerdaten an die API:", {
                                 user_id: userId,
                                 door_number: activeGiveaway,
                                 participant_name: username
-                            })
-                        })
-                        .then(async response => {
-                            const data = await response.json();
-                            console.log("Antwort von save_participants:", data);
+                            });
 
-                            if (data.success) {
-                                ws.send(`PRIVMSG #${botSettings.channel_name} :@${username}, du bist im Giveaway für Tür ${activeGiveaway}!`);
-                            } else {
-                                ws.send(`PRIVMSG #${botSettings.channel_name} :❌ Fehler beim Hinzufügen des Teilnehmers: ${data.message}`);
-                                console.error("Fehler beim Speichern des Teilnehmers:", data.message);
-                            }
-                        })
-                        .catch(error => {
-                            ws.send(`PRIVMSG #${botSettings.channel_name} :❌ Fehler bei der Verarbeitung.`);
-                            console.error("Fehler bei save_participants:", error);
-                        });
+                            // Teilnehmer speichern
+                            fetch('/api/save_participants.php', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    user_id: userId,
+                                    door_number: activeGiveaway,
+                                    participant_name: username
+                                })
+                            })
+                            .then(async (response) => {
+                                const data = await response.json();
+                                console.log("Antwort von save_participants:", data);
+
+                                if (!data.success) {
+                                    ws.send(`PRIVMSG #${botSettings.channel_name} :❌ Fehler beim Hinzufügen des Teilnehmers: ${data.message}`);
+                                }
+                            })
+                            .catch((error) => {
+                                console.error("Fehler bei save_participants:", error);
+                                ws.send(`PRIVMSG #${botSettings.channel_name} :❌ Fehler bei der Verarbeitung.`);
+                            });
+
+                            ws.send(`PRIVMSG #${botSettings.channel_name} :@${username}, du bist im Giveaway für Tür ${activeGiveaway}!`);
+                        }
                     }
                 }
             };

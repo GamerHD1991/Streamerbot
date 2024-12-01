@@ -50,7 +50,9 @@ $calendar = $stmt->get_result();
             <input type="text" name="bot_username" value="<?php echo htmlspecialchars($user['bot_username'] ?? ''); ?>" required>
 
             <div>                
-                <small>(<a href="https://twitchapps.com/tmi/" target="_blank">Erstelle deinen OAuth-Token hier</a>)</small>
+                <small>
+                    (<a href="/generate_token.php" target="_blank">Erstelle deinen OAuth-Token hier</a>)
+                </small>
             </div>
 
             <label>OAuth-Token:</label>
@@ -59,7 +61,7 @@ $calendar = $stmt->get_result();
             <label>Kanalname:</label>
             <input type="text" name="channel_name" value="<?php echo htmlspecialchars($user['channel_name'] ?? ''); ?>" required>
 
-            <label for="channel_id">StreamElements Channel ID:</label>
+            <label for="channel_id">StreamElements Konto-ID:</label>
             <input type="text" id="channel_id" name="channel_id" value="<?php echo htmlspecialchars($user['channel_id'] ?? ''); ?>" required>
 
             <label>StreamElements JWT Token:</label>
@@ -133,14 +135,14 @@ $calendar = $stmt->get_result();
                                 value="<?php echo htmlspecialchars($door['giveaway_duration'] ?? ''); ?>" required>
                         </div>
 
-                        <div class="form-group">
+                        <!-- <div class="form-group">
                             <label for="follower_hours_<?php echo $door['door_number']; ?>">Min. Follower-Stunden:</label>
                             <input id="follower_hours_<?php echo $door['door_number']; ?>" type="number" name="min_follower_hours" 
                                 value="<?php echo htmlspecialchars($door['min_follower_hours'] ?? 0); ?>" required>
-                        </div>
+                        </div> -->
 
                         <div class="form-group">
-                            <label for="points_cost_<?php echo $door['door_number']; ?>">Punkte-Kosten:</label>
+                            <label for="points_cost_<?php echo $door['door_number']; ?>">Punkte-Kosten (StreamElements):</label>
                             <input id="points_cost_<?php echo $door['door_number']; ?>" type="number" name="points_cost" 
                                 value="<?php echo htmlspecialchars($door['points_cost'] ?? 0); ?>" required>
                         </div>

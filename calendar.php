@@ -19,7 +19,7 @@ if (!$user_id) {
     <link rel="stylesheet" href="calendar.css">
 </head>
 <body>
-    <h1>🎄 Adventskalender</h1>
+    <h1>🎄Community-Adventskalender</h1>
     <div id="calendar">
         <!-- Dynamische Inhalte -->
     </div>

@@ -18,9 +18,10 @@ if (isset($_SESSION['user_id'])) {
     <div class="container">
         <h1>Login mit Twitch</h1>
         <p>Melde dich an, um auf deinen Adventskalender zuzugreifen.</p>
-        <a href="https://id.twitch.tv/oauth2/authorize?response_type=code&client_id=<?php echo TWITCH_CLIENT_ID; ?>&redirect_uri=<?php echo urlencode(TWITCH_REDIRECT_URI); ?>&scope=user:read:email">
+        <a href="https://id.twitch.tv/oauth2/authorize?client_id=<?php echo TWITCH_CLIENT_ID; ?>&redirect_uri=<?php echo urlencode(TWITCH_REDIRECT_URI); ?>&response_type=code&scope=chat:read+chat:edit+user:read:subscriptions+channel:read:subscriptions+user:read:follows+moderation:read">
             Mit Twitch einloggen
         </a>
+
         <div class="footer">
             <p>Powered by <a href="https://bestefreundecommunity.de">Beste Freunde Community</a></p>
         </div>

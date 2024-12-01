@@ -72,38 +72,51 @@ form button:hover {
 }
 
 /* Adventskalender */
-ul {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-}
-
-ul li {
-    margin-bottom: 15px;
-    padding: 15px;
-    background-color: #555;
-    border-radius: 8px;
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: space-between;
-    align-items: center;
-}
-
 ul li form {
     display: flex;
     flex-wrap: wrap;
-    gap: 10px;
+    gap: 20px; /* Abstand zwischen den Eingabefeldern */
+    align-items: flex-start; /* Richtet Labels und Felder oben aus */
 }
 
-ul li input[type="text"],
-ul li input[type="number"] {
-    flex: 1 1 auto;
-    max-width: calc(50% - 10px);
+ul li .form-group {
+    flex: 1 1 calc(25% - 20px); /* Gleichmäßige Verteilung mit mehr Abstand */
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 20px; /* Abstand zwischen den Gruppen */
+}
+
+ul li .form-group label {
+    font-weight: bold;
+    margin-bottom: 8px; /* Abstand zwischen Label und Eingabefeld */
+}
+
+ul li .form-group input {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid #666;
+    border-radius: 5px;
+    background-color: #555;
+    color: #fff;
 }
 
 ul li button {
-    flex: 1 1 auto;
-    max-width: calc(30% - 10px);
+    padding: 10px 20px;
+    background-color: #6c63ff;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+    margin-top: 20px; /* Abstand zwischen Eingabefeldern und Buttons */
+}
+
+ul li button:hover {
+    background-color: #574bff;
+}
+
+ul li {
+    margin-bottom: 30px; /* Abstand zwischen den Einträgen der Liste */
 }
 
 /* OBS-Integration */

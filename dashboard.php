@@ -48,13 +48,23 @@ $calendar = $stmt->get_result();
         <form method="POST" action="save_bot_settings.php">
             <label>Bot-Name:</label>
             <input type="text" name="bot_username" value="<?php echo htmlspecialchars($user['bot_username'] ?? ''); ?>" required>
-            <label>OAuth-Token:</label>
-            <div>
-                <input type="text" name="oauth_token" value="<?php echo htmlspecialchars($user['oauth_token'] ?? ''); ?>" required>
+
+            <div>                
                 <small>(<a href="https://twitchapps.com/tmi/" target="_blank">Erstelle deinen OAuth-Token hier</a>)</small>
             </div>
+
+            <label>OAuth-Token:</label>
+            <input type="text" name="oauth_token" value="<?php echo htmlspecialchars($user['oauth_token'] ?? ''); ?>" required>
+
             <label>Kanalname:</label>
             <input type="text" name="channel_name" value="<?php echo htmlspecialchars($user['channel_name'] ?? ''); ?>" required>
+
+            <label for="channel_id">StreamElements Channel ID:</label>
+            <input type="text" id="channel_id" name="channel_id" value="<?php echo htmlspecialchars($user['channel_id'] ?? ''); ?>" required>
+
+            <label>StreamElements JWT Token:</label>
+            <input type="text" name="streamelements_jwt" value="<?php echo htmlspecialchars($user['streamelements_jwt'] ?? ''); ?>" required>
+
             <button type="submit">Speichern</button>
         </form>
 
@@ -104,24 +114,41 @@ $calendar = $stmt->get_result();
             </div>
         </p>
 
-        <h2>Adventskalender-Einstellungen</h2>        
+        <h2>Adventskalender-Einstellungen</h2>
         <ul>
             <?php while ($door = $calendar->fetch_assoc()): ?>
                 <li>
-                    Tür <?php echo $door['door_number']; ?>:
-                    <?php echo $door['is_open'] ? "Geöffnet 🎉" : "Geschlossen 🔒"; ?>
                     <form method="POST" action="save_door.php">
                         <input type="hidden" name="door_number" value="<?php echo $door['door_number']; ?>">
-                        <label>Gewinn:</label>
-                        <input type="text" name="prize" value="<?php echo htmlspecialchars($door['prize'] ?? ''); ?>">
-                        <label>Dauer (Sekunden):</label>
-                        <input type="number" name="giveaway_duration" value="<?php echo htmlspecialchars($door['giveaway_duration'] ?? ''); ?>" required>
-                        <label>Min. Follower-Stunden:</label>
-                        <input type="number" name="min_follower_hours" value="<?php echo htmlspecialchars($door['min_follower_hours'] ?? 0); ?>" required>
+
+                        <div class="form-group">
+                            <label for="prize_<?php echo $door['door_number']; ?>">Gewinn:</label>
+                            <input id="prize_<?php echo $door['door_number']; ?>" type="text" name="prize" 
+                                value="<?php echo htmlspecialchars($door['prize'] ?? ''); ?>">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="duration_<?php echo $door['door_number']; ?>">Dauer (Sekunden):</label>
+                            <input id="duration_<?php echo $door['door_number']; ?>" type="number" name="giveaway_duration" 
+                                value="<?php echo htmlspecialchars($door['giveaway_duration'] ?? ''); ?>" required>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="follower_hours_<?php echo $door['door_number']; ?>">Min. Follower-Stunden:</label>
+                            <input id="follower_hours_<?php echo $door['door_number']; ?>" type="number" name="min_follower_hours" 
+                                value="<?php echo htmlspecialchars($door['min_follower_hours'] ?? 0); ?>" required>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="points_cost_<?php echo $door['door_number']; ?>">Punkte-Kosten:</label>
+                            <input id="points_cost_<?php echo $door['door_number']; ?>" type="number" name="points_cost" 
+                                value="<?php echo htmlspecialchars($door['points_cost'] ?? 0); ?>" required>
+                        </div>
+
                         <button type="submit">Speichern</button>
                     </form>
                     <?php if ($door['is_open']): ?>
-                        <form method="POST" action="close_door.php" style="display:inline;">
+                        <form method="POST" action="close_door.php" style="margin-top: 10px;">
                             <input type="hidden" name="door_number" value="<?php echo $door['door_number']; ?>">
                             <button type="submit" style="background-color: orange; color: white;">Tür schließen</button>
                         </form>

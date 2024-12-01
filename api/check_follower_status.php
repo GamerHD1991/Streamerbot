@@ -1,60 +1,83 @@
 <?php
 require_once '../config.php';
+require_once 'token_manager.php';
 
+// Setze den Header für JSON-Antworten
 header('Content-Type: application/json');
 
-// Überprüfen, ob die erforderlichen Parameter übergeben wurden
-if (!isset($_GET['user_id']) || !isset($_GET['channel_name'])) {
-    echo json_encode(['success' => false, 'message' => 'Ungültige Anfrage']);
+// Bereinige den Ausgabe-Buffer
+if (ob_get_length()) {
+    ob_clean();
+}
+
+// Überprüfen, ob die benötigten Parameter gesendet wurden
+$data = json_decode(file_get_contents('php://input'), true);
+if (!isset($data['username']) || !isset($data['channelName'])) {
+    echo json_encode(['success' => false, 'message' => 'Fehlende Parameter']);
     exit;
 }
 
-$userId = $_GET['user_id'];
-$channelName = $_GET['channel_name'];
+$username = $data['username'];
+$channelName = $data['channelName'];
 
-// Benutzer-Daten abrufen
-$stmt = $db->prepare("SELECT oauth_token, bot_username AS client_id FROM users WHERE id = ?");
-$stmt->bind_param('i', $userId);
-$stmt->execute();
-$userSettings = $stmt->get_result()->fetch_assoc();
+error_log("Empfangene Parameter: Username = $username, ChannelName = $channelName");
 
-if (!$userSettings || !$userSettings['oauth_token'] || !$userSettings['client_id']) {
-    echo json_encode(['success' => false, 'message' => 'Fehlende API-Daten.']);
+// Abrufen eines gültigen Tokens
+$oauthToken = getValidAccessToken($channelName);
+if (!$oauthToken) {
+    echo json_encode(['success' => false, 'message' => 'Token konnte nicht generiert oder erneuert werden']);
     exit;
 }
 
-$oauthToken = $userSettings['oauth_token'];
-$clientId = $userSettings['client_id'];
+// Funktion für API-Aufrufe
+function twitchApiRequest($url, $oauthToken) {
+    $response = @file_get_contents($url, false, stream_context_create([
+        'http' => [
+            'header' => [
+                "Authorization: Bearer {$oauthToken}",
+            ],
+        ],
+    ]));
 
-// Twitch-API-Anfrage
-$url = "https://api.twitch.tv/helix/users/follows?from_id=$userId&to_name=$channelName";
-$headers = [
-    "Authorization: Bearer $oauthToken",
-    "Client-Id: $clientId"
-];
+    if ($response === false) {
+        error_log("API-Fehler bei URL: $url");
+        return null;
+    }
 
-$ch = curl_init($url);
-curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-$response = curl_exec($ch);
-$statusCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-curl_close($ch);
+    return json_decode($response, true);
+}
 
-if ($statusCode !== 200) {
-    echo json_encode([
-        'success' => false,
-        'message' => 'Fehler bei der Twitch-API',
-        'status_code' => $statusCode,
-        'response' => $response
-    ]);
+$username = $data['username'];
+if (!$username) {
+    echo json_encode(['success' => false, 'message' => 'Benutzername fehlt']);
     exit;
 }
 
-$data = json_decode($response, true);
-if (count($data['data']) > 0) {
-    $followedAt = $data['data'][0]['followed_at'];
-    echo json_encode(['success' => true, 'followed_at' => $followedAt]);
-} else {
+
+// Benutzer-ID abrufen
+$userDataApi = twitchApiRequest("https://api.twitch.tv/helix/users?login={$username}", $oauthToken);
+if (!$userDataApi || empty($userDataApi['data'])) {
+    echo json_encode(['success' => false, 'message' => 'Benutzer-ID konnte nicht abgerufen werden']);
+    exit;
+}
+
+$userId = $userDataApi['data'][0]['id'];
+
+// Kanal-ID abrufen
+$channelDataApi = twitchApiRequest("https://api.twitch.tv/helix/users?login={$channelName}", $oauthToken);
+if (!$channelDataApi || empty($channelDataApi['data'])) {
+    echo json_encode(['success' => false, 'message' => 'Kanal-ID konnte nicht abgerufen werden']);
+    exit;
+}
+
+$channelId = $channelDataApi['data'][0]['id'];
+
+// Follower-Status prüfen
+$followData = twitchApiRequest("https://api.twitch.tv/helix/users/follows?from_id={$userId}&to_id={$channelId}", $oauthToken);
+if (!$followData || empty($followData['data'])) {
     echo json_encode(['success' => false, 'message' => 'Benutzer ist kein Follower']);
+    exit;
 }
+
+echo json_encode(['success' => true, 'message' => 'Benutzer ist ein Follower']);
 ?>

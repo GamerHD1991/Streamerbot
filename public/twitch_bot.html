@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Twitch Adventskalender Bot</title>
-    <link rel="stylesheet" href="assets/css/twitch_bot.css">
+    <link rel="stylesheet" href="/assets/css/twitch_bot.css">
     <style>
         body {
             font-family: 'Arial', sans-serif;
@@ -76,6 +76,8 @@
         let doors = {};
 
         async function fetchBotSettings() {
+            const userId = new URLSearchParams(window.location.search).get("user_id"); // Benutzer-ID aus der URL holen
+
             const response = await fetch(`/api/get_bot_settings.php?user_id=${userId}`);
             if (!response.ok) {
                 console.error("Fehler beim Laden der Bot-Einstellungen:", response.statusText);
@@ -96,18 +98,83 @@
                 return acc;
             }, {});
 
-            // Benutzer-ID explizit in botSettings integrieren
+            // Benutzer-ID und neue Felder integrieren
             botSettings = {
                 ...data,
-                user_id: userId // Benutzer-ID aus der URL hinzufügen
+                user_id: userId, // Benutzer-ID aus der URL hinzufügen
+                channel_id: data.channel_id || "", // Channel-ID aus den Datenbank-Ergebnissen
+                streamelements_jwt: data.streamelements_jwt || "" // JWT-Token für StreamElements
             };
 
             console.log("Vollständige Bot-Einstellungen:", botSettings);
+            console.log("Channel-Name:", botSettings.channel_name);
+            console.log("Channel-ID:", botSettings.channel_id);
+            console.log("StreamElements JWT:", botSettings.streamelements_jwt);
 
             return botSettings;
         }
 
+        // Funktion für den Follower-Check (Server-seitig)
+        const checkFollowerStatusServerSide = async (username, channelName) => {
+            try {
+                const response = await fetch('/api/check_follower_status.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, channelName })
+                });
+
+                // Logge die Rohdaten der Serverantwort
+                const rawResponse = await response.text();
+                console.log("Rohdaten vom Server:", rawResponse);
+
+                // Versuche, die Antwort zu parsen
+                const data = JSON.parse(rawResponse);
+                console.log("Follower-Check (Server):", data);
+                return data.success;
+            } catch (error) {
+                console.error("Fehler beim Follower-Check (Server):", error);
+                return false;
+            }
+        };
+
+        // Funktion, um die Kanal-ID anhand des Kanalnamens abzurufen
+        const getChannelId = async (channelName, oauthToken, clientId) => {
+            console.log("Abrufen der Kanal-ID für:", channelName);
+            console.log("Verwendetes Token:", oauthToken);
+
+            try {
+                const response = await fetch(`https://api.twitch.tv/helix/users?login=${channelName}`, {
+                    headers: {
+                        'Authorization': `Bearer ${oauthToken}`,
+                        'Client-Id': clientId
+                    }
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error("Fehler beim Abrufen der Kanal-ID:", errorText);
+
+                    if (response.status === 401) {
+                        console.error("Das Token ist ungültig. Bitte generiere ein neues Token.");
+                    }
+
+                    return null;
+                }
+
+                const data = await response.json();
+                console.log("API-Antwort für Kanal-ID:", data);
+                return data.data[0]?.id || null;
+
+            } catch (error) {
+                console.error("Fehler bei getChannelId:", error);
+                return null;
+            }
+        };
+
+        // Funktion, um den Follower-Status eines Benutzers zu prüfen
         async function checkFollowerStatus(username, channelName, oauthToken, clientId) {
+            console.log("Follower-Check gestartet für:", username, channelName);
+
             try {
                 // Benutzer-ID abrufen
                 const userResponse = await fetch(`https://api.twitch.tv/helix/users?login=${username}`, {
@@ -124,14 +191,22 @@
 
                 const userData = await userResponse.json();
                 const userId = userData.data[0]?.id;
+                console.log("Benutzer-ID abgerufen:", userId);
 
                 if (!userId) {
                     console.error("Benutzer-ID konnte nicht ermittelt werden.");
                     return false;
                 }
 
+                // Kanal-ID abrufen
+                const channelId = await getChannelId(channelName, oauthToken, clientId);
+                if (!channelId) {
+                    console.error("Kanal-ID konnte nicht ermittelt werden.");
+                    return false;
+                }
+
                 // Follower-Status prüfen
-                const followResponse = await fetch(`https://api.twitch.tv/helix/users/follows?from_id=${userId}&to_id=${channelName}`, {
+                const followResponse = await fetch(`https://api.twitch.tv/helix/users/follows?from_id=${userId}&to_id=${channelId}`, {
                     headers: {
                         'Authorization': `Bearer ${oauthToken}`,
                         'Client-Id': clientId
@@ -144,16 +219,112 @@
                 }
 
                 const followData = await followResponse.json();
+                console.log("Follower-Daten abgerufen:", followData);
 
                 if (followData.data.length === 0) {
                     console.log("Benutzer ist kein Follower.");
                     return false;
                 }
 
-                console.log("Benutzer ist ein Follower:", followData.data[0]);
+                console.log("Benutzer ist Follower:", followData.data[0]);
                 return true;
+
             } catch (error) {
                 console.error("Fehler bei checkFollowerStatus:", error);
+                return false;
+            }
+        }
+
+        async function fetchCurrencyName(channelId, jwtToken) {
+            try {
+                const response = await fetch(`https://api.streamelements.com/kappa/v2/loyalty/${channelId}`, {
+                    headers: {
+                        'Authorization': `Bearer ${jwtToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Fehler beim Abrufen des Punktesystems: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                console.log("Punktesystem-Daten:", data);
+
+                return data.loyalty?.name || "Punkte"; // Fallback zu "Punkte", falls kein Name gefunden wird
+            } catch (error) {
+                console.error("Fehler beim Abrufen des Punktesystems:", error);
+                return "Punkte"; // Fallback bei Fehler
+            }
+        }
+
+        async function getPointsFromChat(username) {
+            return new Promise((resolve, reject) => {
+                let resolved = false;
+
+                // WebSocket-Listener für Punkteantwort hinzufügen
+                const messageListener = (event) => {
+                    const message = event.data.trim();
+                    console.log("Eingehende Nachricht zur Punkteprüfung:", message);
+
+                    // Überprüfen, ob die Nachricht Punkteinformationen enthält
+                    if (message.includes(`${username} hat`)) {
+                        const pointsMatch = message.match(/hat (\d+)\s+(punkte|points)/i);
+                        if (pointsMatch) {
+                            const points = parseInt(pointsMatch[1], 10);
+                            resolved = true;
+                            ws.removeEventListener("message", messageListener);
+                            resolve(points); // Gibt die Punkte zurück
+                        }
+                    }
+                };
+
+                // WebSocket-Listener registrieren
+                ws.addEventListener("message", messageListener);
+
+                // Timeout für die Antwort
+                setTimeout(() => {
+                    if (!resolved) {
+                        ws.removeEventListener("message", messageListener);
+                        reject(new Error("Keine Punkteantwort erhalten."));
+                    }
+                }, 5000); // Timeout von 5 Sekunden
+
+                // Chatbefehl senden
+                ws.send(`PRIVMSG #${botSettings.channel_name} :!punkte @${username}`);
+            });
+        }
+
+        async function deductPoints(channelId, jwtToken, username, pointsToDeduct) {
+            const apiUrl = `https://api.streamelements.com/kappa/v2/points/${channelId}`;
+
+            const data = {
+                users: [
+                    { username: username, current: -pointsToDeduct }
+                ],
+                mode: "add"
+            };
+
+            try {
+                const response = await fetch(apiUrl, {
+                    method: "PUT",
+                    headers: {
+                        Authorization: `Bearer ${jwtToken}`,
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify(data)
+                });
+
+                if (response.ok) {
+                    console.log(`Punkte erfolgreich abgezogen: ${pointsToDeduct} für ${username}`);
+                    return true;
+                } else {
+                    const result = await response.json();
+                    console.error("Fehler beim Punkteabzug:", result.message);
+                    return false;
+                }
+            } catch (error) {
+                console.error("API-Fehler beim Punkteabzug:", error);
                 return false;
             }
         }
@@ -167,7 +338,7 @@
                 throw new Error("Ungültige Bot-Einstellungen.");
             }
 
-            const ws = new WebSocket("wss://irc-ws.chat.twitch.tv:443");
+            ws = new WebSocket("wss://irc-ws.chat.twitch.tv:443");
 
             ws.onopen = () => {
                 document.getElementById('status').textContent = "🎉 Verbunden mit Twitch IRC - die Seite offen lassen!";
@@ -186,18 +357,23 @@
                     ws.send("PONG :tmi.twitch.tv");
                 } else if (message.includes(`PRIVMSG #${botSettings.channel_name}`)) {
                     const chatMessage = message.split(" :")[1].trim();
+                    console.log("Empfangene Chatnachricht:", chatMessage); // NEU HINZUFÜGEN
                     const username = message.split("!")[0].slice(1);
+                    console.log("Absender der Nachricht:", username); // NEU HINZUFÜGEN
                     const userId = message.match(/user-id=(\d+)/)?.[1];
 
                     if (chatMessage.startsWith("!advent")) {
                         const doorNumber = parseInt(chatMessage.split(" ")[1]);
+                        console.log("!advent-Befehl erkannt:", doorNumber); // NEU HINZUFÜGEN
 
                         if (isNaN(doorNumber)) {
+                            console.log("Ungültige Türnummer:", chatMessage); // NEU HINZUFÜGEN
                             ws.send(`PRIVMSG #${botSettings.channel_name} :❌ Bitte gib eine gültige Türnummer an!`);
                             return;
                         }
 
                         if (!doors || !doors[doorNumber]) {
+                            console.log("Türnummer existiert nicht:", doorNumber); // NEU HINZUFÜGEN
                             ws.send(`PRIVMSG #${botSettings.channel_name} :❌ Tür ${doorNumber} existiert nicht.`);
                             return;
                         }
@@ -296,61 +472,73 @@
                     if (chatMessage === "!join" && activeGiveaway) {
                         const username = message.split("!")[0].slice(1);
                         const userId = botSettings.user_id; // Benutzer-ID aus Bot-Einstellungen
+                        console.log("!join-Befehl erkannt. Benutzer:", username);
 
-                        if (!userId) {
-                            ws.send(`PRIVMSG #${botSettings.channel_name} :@${username}, ein Fehler ist aufgetreten. Deine Teilnahme konnte nicht gespeichert werden.`);
-                            console.error("Fehler: Benutzer-ID fehlt:", botSettings);
-                            return;
-                        }
+                        const channelId = botSettings.channel_id;
+                        const jwtToken = botSettings.streamelements_jwt;
 
-                        if (participants.includes(username)) {
-                            ws.send(`PRIVMSG #${botSettings.channel_name} :@${username}, du bist bereits im Giveaway für Tür ${activeGiveaway}!`);
-                        } else {
-                            const followerHoursRequired = doors[activeGiveaway]?.min_follower_hours || 0;
+                        // Punktesystem-Name abrufen
+                        const currencyName = await fetchCurrencyName(channelId, jwtToken);
+                        console.log("Punktesystem-Name:", currencyName);
 
-                            // Follower-Check, falls Mindest-Followerzeit definiert ist
-                            if (followerHoursRequired > 0) {
-                                const isFollower = await checkFollowerStatus(username, botSettings.channel_name, botSettings.oauth_token, botSettings.client_id);
-                                if (!isFollower) {
-                                    ws.send(`PRIVMSG #${botSettings.channel_name} :@${username}, du musst mindestens ${followerHoursRequired} Stunden ein Follower sein, um teilzunehmen.`);
+                        const doorPointsCost = doors[activeGiveaway]?.points_cost || 0;
+                        console.log(`Benötigte ${currencyName}:`, doorPointsCost);
+
+                        if (doorPointsCost > 0) {
+                            try {
+                                const userPoints = await getPointsFromChat(username);
+                                console.log(`${username} hat ${userPoints} ${currencyName}.`);
+
+                                if (userPoints < doorPointsCost) {
+                                    ws.send(`PRIVMSG #${botSettings.channel_name} :@${username}, du hast nicht genug ${currencyName} (${doorPointsCost} benötigt).`);
                                     return;
                                 }
+
+                                const pointsDeducted = await deductPoints(channelId, jwtToken, username, doorPointsCost);
+                                if (!pointsDeducted) {
+                                    ws.send(`PRIVMSG #${botSettings.channel_name} :@${username}, ein Fehler ist aufgetreten. ${currencyName} konnten nicht abgezogen werden.`);
+                                    return;
+                                }
+                            } catch (error) {
+                                console.error("Fehler bei der Punkteprüfung:", error);
+                                ws.send(`PRIVMSG #${botSettings.channel_name} :@${username}, ein Fehler ist aufgetreten. Bitte versuche es später erneut.`);
+                                return;
                             }
+                        }
 
-                            participants.push(username);
+                        // Benutzer zur Teilnehmerliste hinzufügen
+                        participants.push(username);
+                        console.log("Sende Teilnehmerdaten an die API:", {
+                            user_id: userId,
+                            door_number: activeGiveaway,
+                            participant_name: username
+                        });
 
-                            console.log("Sende Teilnehmerdaten an die API:", {
+                        // Teilnehmer speichern
+                        fetch('/api/save_participants.php', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
                                 user_id: userId,
                                 door_number: activeGiveaway,
                                 participant_name: username
-                            });
-
-                            // Teilnehmer speichern
-                            fetch('/api/save_participants.php', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                    user_id: userId,
-                                    door_number: activeGiveaway,
-                                    participant_name: username
-                                })
                             })
-                            .then(async response => {
-                                const data = await response.json();
-                                console.log("Antwort von save_participants:", data);
+                        })
+                        .then(async response => {
+                            const data = await response.json();
+                            console.log("Antwort von save_participants:", data);
 
-                                if (data.success) {
-                                    ws.send(`PRIVMSG #${botSettings.channel_name} :@${username}, du bist im Giveaway für Tür ${activeGiveaway}!`);
-                                } else {
-                                    ws.send(`PRIVMSG #${botSettings.channel_name} :❌ Fehler beim Hinzufügen des Teilnehmers: ${data.message}`);
-                                    console.error("Fehler beim Speichern des Teilnehmers:", data.message);
-                                }
-                            })
-                            .catch(error => {
-                                ws.send(`PRIVMSG #${botSettings.channel_name} :❌ Fehler bei der Verarbeitung.`);
-                                console.error("Fehler bei save_participants:", error);
-                            });
-                        }
+                            if (data.success) {
+                                ws.send(`PRIVMSG #${botSettings.channel_name} :@${username}, du bist im Giveaway für Tür ${activeGiveaway}!`);
+                            } else {
+                                ws.send(`PRIVMSG #${botSettings.channel_name} :❌ Fehler beim Hinzufügen des Teilnehmers: ${data.message}`);
+                                console.error("Fehler beim Speichern des Teilnehmers:", data.message);
+                            }
+                        })
+                        .catch(error => {
+                            ws.send(`PRIVMSG #${botSettings.channel_name} :❌ Fehler bei der Verarbeitung.`);
+                            console.error("Fehler bei save_participants:", error);
+                        });
                     }
                 }
             };

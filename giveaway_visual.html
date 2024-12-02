@@ -115,12 +115,24 @@
                 if (data.success) {
                     const { participants: newParticipants, active_door } = data;
 
+                    // Anzahl der Teilnehmer bestimmen
+                    const participantCount = newParticipants?.length || 0;
+
+                    // Aktive Tür und Teilnehmerzahl setzen
                     if (active_door) {
-                        currentDoorElement.textContent = `Aktive Tür: ${active_door}`;
+                        currentDoorElement.textContent = `Aktive Tür: ${active_door} | ${participantCount} Teilnehmer`;
                     } else {
-                        currentDoorElement.textContent = `Aktive Tür: Keine`;
+                        currentDoorElement.textContent = `Aktive Tür: Keine | ${participantCount} Teilnehmer`;
                     }
 
+                    // Aktualisiere den Status basierend auf der Teilnehmerzahl
+                    if (participantCount > 0) {
+                        status.textContent = `${participantCount} Teilnehmer aktuell im Giveaway`;
+                    } else {
+                        status.textContent = "Keine Teilnehmer gefunden.";
+                    }
+
+                    // Aktualisiere die Lostrommel
                     updateTrommel(newParticipants || []);
                 } else {
                     status.textContent = "Fehler beim Abrufen der Teilnehmer.";

@@ -388,15 +388,42 @@
                             return;
                         }
 
+                        // Speichere die aktive Tür in der Datenbank
+                        await fetch('/api/set_active_door.php', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ user_id: botSettings.user_id, door_number: doorNumber })
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.success) {
+                                console.log(data.message);
+                            } else {
+                                console.error(data.message);
+                            }
+                        })
+                        .catch(error => console.error('Fehler beim Setzen der aktiven Tür:', error));
+
                         const prize = doors[doorNumber].prize || "keinen Preis";
                         activeGiveaway = doorNumber;
-                        participants = [];
+                        participants = [];                        
 
                         ws.send(`PRIVMSG #${botSettings.channel_name} :🎉 Giveaway für Tür ${doorNumber} gestartet! Gebe "!join" ein, um teilzunehmen.`);
 
                         setTimeout(async () => {
                             if (participants.length === 0) {
                                 ws.send(`PRIVMSG #${botSettings.channel_name} :❌ Keine Teilnehmer für Tür ${doorNumber}. Das Giveaway wurde abgebrochen.`);
+
+                                // Aktive Tür zurücksetzen
+                                await fetch('/api/set_active_door.php', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ user_id: botSettings.user_id, door_number: null }) // Türnummer zurücksetzen
+                                })
+                                .then(response => response.json())
+                                .then(data => console.log(data))
+                                .catch(error => console.error('Fehler beim Zurücksetzen der aktiven Tür:', error));
+
                                 activeGiveaway = null;
                                 return;
                             }
@@ -432,6 +459,16 @@
                                                 headers: { 'Content-Type': 'application/json' },
                                                 body: JSON.stringify({ user_id: botSettings.user_id, door_number: doorNumber })
                                             });
+
+                                            // Aktive Tür zurücksetzen
+                                            await fetch('/api/set_active_door.php', {
+                                                method: 'POST',
+                                                headers: { 'Content-Type': 'application/json' },
+                                                body: JSON.stringify({ user_id: botSettings.user_id, door_number: null }) // Türnummer zurücksetzen
+                                            })
+                                            .then(response => response.json())
+                                            .then(data => console.log(data))
+                                            .catch(error => console.error('Fehler beim Zurücksetzen der aktiven Tür:', error));
                                         }
                                     }
                                 };
@@ -463,6 +500,22 @@
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({ user_id: botSettings.user_id, door_number: doorNumber })
+                            });
+
+                            // Aktive Tür zurücksetzen
+                            await fetch('/api/set_active_door.php', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ user_id: botSettings.user_id, active_door: null })
+                            }).then(response => response.json())
+                            .then(data => {
+                                if (data.success) {
+                                    console.log("Aktive Tür erfolgreich zurückgesetzt.");
+                                } else {
+                                    console.error("Fehler beim Zurücksetzen der aktiven Tür:", data.message);
+                                }
+                            }).catch(error => {
+                                console.error("Fehler beim Zurücksetzen der aktiven Tür:", error);
                             });
 
                             activeGiveaway = null;

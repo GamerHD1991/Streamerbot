@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Testseite: Teilnehmer von der Ignorierliste entfernen</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #fff;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            border-radius: 8px;
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+        label {
+            display: block;
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+        input, button {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 20px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+        button {
+            background-color: #e63946;
+            color: #fff;
+            border: none;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #d32f2f;
+        }
+        .response {
+            padding: 10px;
+            background-color: #f4f4f4;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            margin-top: 20px;
+        }
+        .error {
+            color: red;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Teilnehmer von der Ignorierliste entfernen</h1>
+        <form id="ignoreForm">
+            <label for="participantName">Teilnehmername:</label>
+            <input type="text" id="participantName" placeholder="Teilnehmer eingeben" required>
+            <button type="submit">Teilnehmer entfernen</button>
+        </form>
+
+        <div id="response" class="response" style="display: none;"></div>
+    </div>
+
+    <script>
+        document.getElementById('ignoreForm').addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const participantName = document.getElementById('participantName').value;
+
+            try {
+                const response = await fetch('/api/remove_from_ignore_list.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ participant_name: participantName })
+                });
+
+                const data = await response.json();
+                const responseDiv = document.getElementById('response');
+                responseDiv.style.display = 'block';
+
+                if (data.success) {
+                    responseDiv.innerHTML = `<p>${data.message}</p>`;
+                    responseDiv.style.color = 'green';
+                } else {
+                    responseDiv.innerHTML = `<p class="error">❌ Fehler: ${data.message}</p>`;
+                    responseDiv.style.color = 'red';
+                }
+            } catch (error) {
+                console.error('Fehler beim Entfernen des Teilnehmers:', error);
+                const responseDiv = document.getElementById('response');
+                responseDiv.style.display = 'block';
+                responseDiv.innerHTML = `<p class="error">❌ Fehler: Es ist ein Fehler beim Entfernen des Teilnehmers aufgetreten.</p>`;
+            }
+        });
+    </script>
+</body>
+</html>
